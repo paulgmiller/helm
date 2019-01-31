@@ -67,65 +67,29 @@ func (c *Client) waitForResources(timeout time.Duration, created Result) error {
 				}
 				pods = append(pods, *pod)
 			case *appsv1.Deployment:
-				currentDeployment, err := kcs.AppsV1().Deployments(value.Namespace).Get(value.Name, metav1.GetOptions{})
+				newDeployment, err := getDeployment(kcs, value.Namespace, value.Name)
 				if err != nil {
 					return false, err
 				}
-				// Find RS associated with deployment
-				newReplicaSet, err := deploymentutil.GetNewReplicaSet(currentDeployment, kcs.AppsV1())
-				if err != nil || newReplicaSet == nil {
-					return false, err
-				}
-				newDeployment := deployment{
-					newReplicaSet,
-					currentDeployment,
-				}
-				deployments = append(deployments, newDeployment)
+				deployments = append(deployments, *newDeployment)
 			case *appsv1beta1.Deployment:
-				currentDeployment, err := kcs.AppsV1().Deployments(value.Namespace).Get(value.Name, metav1.GetOptions{})
+				newDeployment, err := getDeployment(kcs, value.Namespace, value.Name)
 				if err != nil {
 					return false, err
 				}
-				// Find RS associated with deployment
-				newReplicaSet, err := deploymentutil.GetNewReplicaSet(currentDeployment, kcs.AppsV1())
-				if err != nil || newReplicaSet == nil {
-					return false, err
-				}
-				newDeployment := deployment{
-					newReplicaSet,
-					currentDeployment,
-				}
-				deployments = append(deployments, newDeployment)
+				deployments = append(deployments, *newDeployment)
 			case *appsv1beta2.Deployment:
-				currentDeployment, err := kcs.AppsV1().Deployments(value.Namespace).Get(value.Name, metav1.GetOptions{})
+				newDeployment, err := getDeployment(kcs, value.Namespace, value.Name)
 				if err != nil {
 					return false, err
 				}
-				// Find RS associated with deployment
-				newReplicaSet, err := deploymentutil.GetNewReplicaSet(currentDeployment, kcs.AppsV1())
-				if err != nil || newReplicaSet == nil {
-					return false, err
-				}
-				newDeployment := deployment{
-					newReplicaSet,
-					currentDeployment,
-				}
-				deployments = append(deployments, newDeployment)
+				deployments = append(deployments, *newDeployment)
 			case *extensions.Deployment:
-				currentDeployment, err := kcs.AppsV1().Deployments(value.Namespace).Get(value.Name, metav1.GetOptions{})
+				newDeployment, err := getDeployment(kcs, value.Namespace, value.Name)
 				if err != nil {
 					return false, err
 				}
-				// Find RS associated with deployment
-				newReplicaSet, err := deploymentutil.GetNewReplicaSet(currentDeployment, kcs.AppsV1())
-				if err != nil || newReplicaSet == nil {
-					return false, err
-				}
-				newDeployment := deployment{
-					newReplicaSet,
-					currentDeployment,
-				}
-				deployments = append(deployments, newDeployment)
+				deployments = append(deployments, *newDeployment)
 			case *extensions.DaemonSet:
 				list, err := getPods(kcs, value.Namespace, value.Spec.Selector.MatchLabels)
 				if err != nil {
@@ -248,6 +212,24 @@ func (c *Client) deploymentsReady(deployments []deployment) bool {
 		}
 	}
 	return true
+}
+
+func getDeployment(client kubernetes.Interface, namespace string, name string) (*deployment, error) {
+	// seems like the deployment could have changed? why don't we compare the pod spec?
+	currentDeployment, err := client.AppsV1().Deployments(namespace).Get(name, metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+	// Find RS associated with deployment
+	newReplicaSet, err := deploymentutil.GetNewReplicaSet(currentDeployment, client.AppsV1())
+	if err != nil || newReplicaSet == nil {
+		return nil, err
+	}
+	//oh man this feels like a wierd leak my go foo is weak
+	return &deployment{
+		newReplicaSet,
+		currentDeployment,
+	}, nil
 }
 
 func getPods(client kubernetes.Interface, namespace string, selector map[string]string) ([]v1.Pod, error) {
